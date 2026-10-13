@@ -91,7 +91,7 @@ def main():
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Token del bot
+    # Token del bot corretto
     token = "8743824615:AAFF_uL3YKRJgIkjlrKLmQD_gYGEclJwMp4"
 
     # Inizializzazione dell'applicazione Telegram
@@ -101,7 +101,9 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
 
     print("Bot avviato con successo e in ascolto...")
-    app.run_polling()
+    
+    # drop_pending_updates=True forza l'eliminazione dei vecchi aggiornamenti in sospeso e risolve il conflitto 409
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
     main()
