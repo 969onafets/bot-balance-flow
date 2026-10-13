@@ -92,7 +92,7 @@ def main():
     flask_thread.start()
 
     # Token del bot
-    token = "8743824615:AAFl_uL3YKRJgkJr1zKlMCD_gYGECUlWmP4"
+    token = "8743824615:AAFF_uL3YKRJgIkjlrKLmQD_gYGEclJwMp4"
 
     # Inizializzazione dell'applicazione Telegram
     app = Application.builder().token(token).build()
