@@ -74,7 +74,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     # Recupera il Token salvato nelle variabili d'ambiente
-    token = os.environ.get("TELEGRAM_TOKEN")
+    token = "8889596579:AAhf6_1HGsYESATQSPWJnWyf4UcoQG59TwA"
+```[cite: 6]
     if not token:
         print("ERRORE: TELEGRAM_TOKEN non trovato!")
         return
