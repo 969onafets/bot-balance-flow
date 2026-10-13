@@ -1,7 +1,7 @@
 import os
 import logging
-from threading import Thread
 from flask import Flask
+from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
@@ -11,23 +11,19 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# --- MINI SERVER FLASK PER SODDISFARE RENDER ---
-app_flask = Flask('')
+# --- MINI SERVER FLASK PER SODDISFARE LA PORTA DI RENDER ---
+app_flask = Flask(__name__)
 
 @app_flask.route('/')
 def home():
-    return "Il bot Balance & Flow è attivo e online! 🚀"
+    return "Balance & Flow Bot è attivo e online! 🚀"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app_flask.run(host='0.0.0.0', port=port)
+# -----------------------------------------------------------
 
-def keep_alive():
-    t = Thread(target=run_flask)
-    t.start()
-# ---------------------------------------------
-
-# Funzione per mostrare il menu principale
+# Funzione per mostrare il menu principale con i pulsanti interattivi
 def main_keyboard():
     keyboard = [
         [
@@ -51,7 +47,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=main_keyboard())
 
-# Gestione dei click sui pulsanti
+# Gestione dei click sui pulsanti della tastiera inline
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -90,19 +86,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text=text, parse_mode='Markdown', reply_markup=main_keyboard())
 
 def main():
-    # Avvia il mini-server Flask in background per tenere la porta aperta su Render
-    keep_alive()
+    # Avvia Flask in un thread separato in background per mantenere la porta aperta su Render
+    flask_thread = Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
 
     # Token del bot
     token = "8743824615:AAFl_uL3YKRJgkJr1zKlMCD_gYGECUlWmP4"
 
-    # Avvia l'applicazione del bot Telegram
+    # Inizializzazione dell'applicazione Telegram
     app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    print("Bot avviato e in ascolto con server web di supporto...")
+    print("Bot avviato con successo e in ascolto...")
     app.run_polling()
 
 if __name__ == '__main__':
