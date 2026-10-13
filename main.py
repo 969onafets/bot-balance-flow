@@ -1,13 +1,31 @@
 import os
 import logging
+from threading import Thread
+from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# Configurazione del Logging per vedere errori ed eventi
+# Configurazione del Logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
+# --- MINI SERVER FLASK PER SODDISFARE RENDER ---
+app_flask = Flask('')
+
+@app_flask.route('/')
+def home():
+    return "Il bot Balance & Flow è attivo e online! 🚀"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app_flask.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run_flask)
+    t.start()
+# ---------------------------------------------
 
 # Funzione per mostrare il menu principale
 def main_keyboard():
@@ -36,7 +54,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Gestione dei click sui pulsanti
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Notifica Telegram che il click è stato ricevuto
+    await query.answer()
 
     if query.data == 'pausa':
         text = (
@@ -69,24 +87,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Se un'attività richiede meno di 2 minuti per essere fatta (rispondere a un messaggio breve, riporre una cosa, avviare la lavatrice), farla *subito* anziché inserirla nella lista delle cose da fare. Svuoterà istantaneamente la tua mente!"
         )
 
-    # Risponde modificando il messaggio e riproponendo il menu
     await query.edit_message_text(text=text, parse_mode='Markdown', reply_markup=main_keyboard())
 
 def main():
-    # Recupera il Token salvato nelle variabili d'ambiente
-    token = "8743824615:AAFF_uL3YKRJgIkjlrKLmQD_gYGEclJwMp4"
-    if not token:
-        print("ERRORE: TELEGRAM_TOKEN non trovato!")
-        return
+    # Avvia il mini-server Flask in background per tenere la porta aperta su Render
+    keep_alive()
 
-    # Avvia l'applicazione del bot
+    # Token del bot
+    token = "8743824615:AAFl_uL3YKRJgkJr1zKlMCD_gYGECUlWmP4"
+
+    # Avvia l'applicazione del bot Telegram
     app = Application.builder().token(token).build()
 
-    # Registra i comandi e le interazioni
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    print("Bot avviato e in ascolto...")
+    print("Bot avviato e in ascolto con server web di supporto...")
     app.run_polling()
 
 if __name__ == '__main__':
