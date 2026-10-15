@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 from flask import Flask
 from threading import Thread
@@ -13,7 +14,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# --- MINI SERVER FLASK PER LA PORTA DI RENDER ---
+# --- MINI SERVER FLASK PER SODDISFARE LA PORTA DI RENDER ---
 app_flask = Flask(__name__)
 
 @app_flask.route('/')
@@ -23,13 +24,13 @@ def home():
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app_flask.run(host='0.0.0.0', port=port)
-# ------------------------------------------------
+# -----------------------------------------------------------
 
 # Inizializzazione del client Google GenAI
 gemini_api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=gemini_api_key)
 
-# Funzione di utilità per impostare il modello corretto e stabile
+# Determinazione del modello Gemini da utilizzare
 def get_ai_model():
     model_to_use = 'gemini-3.8-flash'
     try:
@@ -38,11 +39,37 @@ def get_ai_model():
             if 'flash' in m.name and 'generateContent' in m.supported_generation_methods:
                 model_to_use = m.name
                 break
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"Impossibile elencare i modelli, utilizzo il default ({model_to_use}): {e}")
     return model_to_use
 
-# Comando /start con pulsanti iniziali e percorsi
+# Funzione ausiliaria di generazione con retry per gestire i picchi temporanei (es. HTTP 503)
+def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, max_retries=3):
+    model = get_ai_model()
+    for attempt in range(max_retries):
+        try:
+            if photo_bytes:
+                contents = [
+                    types.Part.from_bytes(data=bytes(photo_bytes), mime_type='image/jpeg'),
+                    prompt
+                ]
+            else:
+                contents = prompt
+
+            response = client.models.generate_content(
+                model=model,
+                contents=contents,
+                config={'system_instruction': system_instruction}
+            )
+            return response.text
+        except Exception as e:
+            if "503" in str(e) and attempt < max_retries - 1:
+                logging.warning(f"Google GenAI occupato (503). Tentativo {attempt + 1}/{max_retries}, attesa di 2 secondi...")
+                time.sleep(2)
+            else:
+                raise e
+
+# Comando /start con tastiera inline per i percorsi rapidi
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "👋 **Benvenuta in Balance & Flow AI!**\n\n"
@@ -70,13 +97,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.callback_query:
         await update.callback_query.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
 
-# Gestore dei pulsanti inline
+# Gestione della pressione dei pulsanti della tastiera inline
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     data = query.data
-    # Corretto l'accesso alla chat id sfruttando l'update o il messaggio della query
     chat_id = update.effective_chat.id if update.effective_chat else query.message.chat.id
     
     if data == "set_profile":
@@ -124,12 +150,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Rispondi in modo caldo, conciso, pratico e incoraggiante."
         )
 
-        response = client.models.generate_content(
-            model=get_ai_model(),
-            contents=user_prompt,
-            config={'system_instruction': system_instruction}
+        bot_reply = generate_content_with_retry(
+            prompt=user_prompt,
+            system_instruction=system_instruction
         )
-        bot_reply = response.text
     except Exception as e:
         logging.error(f"Errore IA da pulsante: {e}")
         bot_reply = "Scusa, ho avuto un piccolo momento di stanchezza. Riprova tra poco!"
@@ -160,19 +184,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"specializzata in benessere, postura e produttività. Dati utente: {profile}."
         )
 
-        response = client.models.generate_content(
-            model=get_ai_model(),
-            contents=user_message,
-            config={'system_instruction': system_instruction}
+        bot_reply = generate_content_with_retry(
+            prompt=user_message,
+            system_instruction=system_instruction
         )
-        bot_reply = response.text
     except Exception as e:
         logging.error(f"Errore generazione testo: {e}")
         bot_reply = "Scusa, ho avuto un piccolo momento di stanchezza. Riprova tra poco!"
 
     await update.message.reply_text(bot_reply)
 
-# Gestione delle foto inviate dall'utente
+# Gestione dell'invio delle foto per la valutazione della postura e dei progressi
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -192,16 +214,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "concentrandoti su salute, allineamento posturale e benessere."
         )
 
-        response = client.models.generate_content(
-            model=get_ai_model(),
-            contents=[
-                types.Part.from_bytes(data=bytes(photo_bytes), mime_type='image/jpeg'),
-                caption
-            ],
-            config={'system_instruction': system_instruction}
+        bot_reply = generate_content_with_retry(
+            prompt=caption,
+            system_instruction=system_instruction,
+            photo_bytes=photo_bytes
         )
-
-        bot_reply = response.text
     except Exception as e:
         logging.error(f"Errore nell'analisi della foto: {e}")
         bot_reply = "Non sono riuscito ad analizzare la foto in questo momento. Assicurati che sia in formato chiaro e riprova tra poco!"
