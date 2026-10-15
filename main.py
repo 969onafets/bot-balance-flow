@@ -31,7 +31,6 @@ client = genai.Client(api_key=gemini_api_key)
 
 # Funzione di utilità per impostare il modello corretto e stabile
 def get_ai_model():
-    # Usiamo direttamente gemini-3.8-flash come richiesto dall'API di Google
     model_to_use = 'gemini-3.8-flash'
     try:
         models = client.models.list()
@@ -77,7 +76,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     data = query.data
-    chat_id = query.effective_chat.id
+    # Corretto l'accesso alla chat id sfruttando l'update o il messaggio della query
+    chat_id = update.effective_chat.id if update.effective_chat else query.message.chat.id
     
     if data == "set_profile":
         context.user_data['waiting_for_profile'] = True
@@ -136,7 +136,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(chat_id=chat_id, text=bot_reply)
 
-# Gestione dei messaggi di testo (inclusa la ricezione dei dati del profilo)
+# Gestione dei messaggi di testo
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     chat_id = update.effective_chat.id
@@ -172,7 +172,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(bot_reply)
 
-# Gestione delle foto inviate dall'utente (Analisi Posturale / Progressi)
+# Gestione delle foto inviate dall'utente
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
