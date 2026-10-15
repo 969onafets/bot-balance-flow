@@ -52,9 +52,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Rispondi in modo caldo, conciso, pratico e incoraggiante."
         )
 
-        # Chiamata al modello Gemini aggiornato
+        # Chiamata al modello Gemini aggiornato secondo le indicazioni dell'API
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-3.8-flash',
             contents=user_message,
             config={
                 'system_instruction': system_instruction,
