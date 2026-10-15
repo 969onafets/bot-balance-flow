@@ -1,5 +1,6 @@
 import os
 import time
+import sqlite3
 import logging
 from flask import Flask
 from threading import Thread
@@ -14,23 +15,57 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# --- MINI SERVER FLASK PER SODDISFARE LA PORTA DI RENDER ---
+# --- INIZIALIZZAZIONE DATABASE SQLITE ---
+def init_db():
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS profiles (
+            user_id INTEGER PRIMARY KEY,
+            profile_data TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def save_user_profile(user_id, profile_text):
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT OR REPLACE INTO profiles (user_id, profile_data)
+        VALUES (?, ?)
+    ''', (user_id, profile_text))
+    conn.commit()
+    conn.close()
+
+def get_user_profile(user_id):
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT profile_data FROM profiles WHERE user_id = ?', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else 'Profilo non ancora impostato.'
+
+# Avvia la creazione della tabella all'avvio
+init_db()
+# ----------------------------------------
+
+# --- MINI SERVER FLASK PER LA PORTA DI RENDER ---
 app_flask = Flask(__name__)
 
 @app_flask.route('/')
 def home():
-    return "Balance & Flow AI Bot è attivo e online! 🚀"
+    return "Balance & Flow AI Bot è attivo e online con Database! 🚀"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app_flask.run(host='0.0.0.0', port=port)
-# -----------------------------------------------------------
+# ------------------------------------------------
 
 # Inizializzazione del client Google GenAI
 gemini_api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=gemini_api_key)
 
-# Determinazione del modello Gemini da utilizzare
 def get_ai_model():
     model_to_use = 'gemini-3.8-flash'
     try:
@@ -43,7 +78,6 @@ def get_ai_model():
         logging.warning(f"Impossibile elencare i modelli, utilizzo il default ({model_to_use}): {e}")
     return model_to_use
 
-# Funzione ausiliaria di generazione con retry per gestire i picchi temporanei (es. HTTP 503)
 def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, max_retries=3):
     model = get_ai_model()
     for attempt in range(max_retries):
@@ -69,7 +103,6 @@ def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, ma
             else:
                 raise e
 
-# Comando /start con tastiera inline per i percorsi rapidi
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "👋 **Benvenuta in Balance & Flow AI!**\n\n"
@@ -97,7 +130,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.callback_query:
         await update.callback_query.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
 
-# Gestione della pressione dei pulsanti della tastiera inline
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -125,7 +157,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=(
                 "📸 **Percorso Fotografico & Postura**\n\n"
                 "Puoi inviarmi in qualsiasi momento una foto (es. di profilo per la postura o per monitorare i tuoi progressi estetici).\n\n"
-                "La analizzerò in modo confidenziale insieme ai tuoi dati fisici per darti feedback costruttivi ed esercizi mirati!"
+                "La analizzerò in modo confidenziale insieme ai tuoi dati fisici salvati nel database per darti feedback mirati!"
             ),
             parse_mode='Markdown'
         )
@@ -142,7 +174,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     try:
-        profile = context.user_data.get('profile', 'Profilo non ancora impostato.')
+        profile = get_user_profile(chat_id)
         system_instruction = (
             f"Sei 'Balance & Flow', un'assistente virtuale empatica, professionale e rispettosa "
             f"specializzata in benessere, postura, chinesiologia leggera e nutrizione veloce. "
@@ -160,17 +192,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(chat_id=chat_id, text=bot_reply)
 
-# Gestione dei messaggi di testo
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     chat_id = update.effective_chat.id
 
     if context.user_data.get('waiting_for_profile'):
-        context.user_data['profile'] = user_message
+        save_user_profile(chat_id, user_message)
         context.user_data['waiting_for_profile'] = False
         await update.message.reply_text(
-            "✅ **Profilo salvato con successo!**\n\n"
-            "Ora terrò conto dei tuoi dati per personalizzare ogni consiglio e analisi fotografica. Prova a scrivermi o a inviarmi una foto!",
+            "✅ **Profilo salvato permanentemente nel database!**\n\n"
+            "I tuoi dati sono al sicuro e verranno usati per personalizzare ogni consiglio e analisi fotografica.",
             parse_mode='Markdown'
         )
         return
@@ -178,7 +209,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     try:
-        profile = context.user_data.get('profile', 'Profilo non specificato.')
+        profile = get_user_profile(chat_id)
         system_instruction = (
             f"Sei 'Balance & Flow', un'assistente virtuale empatica e professionale "
             f"specializzata in benessere, postura e produttività. Dati utente: {profile}."
@@ -194,7 +225,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(bot_reply)
 
-# Gestione dell'invio delle foto per la valutazione della postura e dei progressi
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -203,7 +233,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo_file = await update.message.photo[-1].get_file()
         photo_bytes = await photo_file.download_as_bytearray()
 
-        profile = context.user_data.get('profile', 'Nessun dato anagrafico inserito.')
+        profile = get_user_profile(chat_id)
         caption = update.message.caption or "Analizza questa foto dal punto di vista della postura, della tonicità e del benessere generale, offrendo suggerimenti gentili e professionali."
 
         system_instruction = (
@@ -238,7 +268,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Bot IA multimodale avviato con successo e in ascolto...")
+    print("Bot IA multimodale con database avviato con successo e in ascolto...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
