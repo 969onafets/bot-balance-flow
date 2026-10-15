@@ -29,9 +29,10 @@ def run_flask():
 gemini_api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=gemini_api_key)
 
-# Funzione di utilità per trovare dinamicamente il modello flash disponibile
+# Funzione di utilità per impostare il modello corretto e stabile
 def get_ai_model():
-    model_to_use = 'gemini-2.5-flash'
+    # Usiamo direttamente gemini-3.8-flash come richiesto dall'API di Google
+    model_to_use = 'gemini-3.8-flash'
     try:
         models = client.models.list()
         for m in models:
@@ -76,23 +77,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     data = query.data
+    chat_id = query.effective_chat.id
     
     if data == "set_profile":
         context.user_data['waiting_for_profile'] = True
-        await query.message.reply_text(
-            "📝 **Configurazione Profilo**\n\n"
-            "Scrivimi in un unico messaggio i tuoi dati nel formato:\n"
-            "`Età, Altezza (cm), Peso (kg), Obiettivo`\n\n"
-            "Esempio: `35, 168, 60, Migliorare postura e tonificare`",
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "📝 **Configurazione Profilo**\n\n"
+                "Scrivimi in un unico messaggio i tuoi dati nel formato:\n"
+                "`Età, Altezza (cm), Peso (kg), Obiettivo`\n\n"
+                "Esempio: `35, 168, 60, Migliorare postura e tonificare`"
+            ),
             parse_mode='Markdown'
         )
         return
 
     if data == "info_photo":
-        await query.message.reply_text(
-            "📸 **Percorso Fotografico & Postura**\n\n"
-            "Puoi inviarmi in qualsiasi momento una foto (es. di profilo per la postura o per monitorare i tuoi progressi estetici).\n\n"
-            "La analizzerò in modo confidenziale insieme ai tuoi dati fisici per darti feedback costruttivi ed esercizi mirati!",
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "📸 **Percorso Fotografico & Postura**\n\n"
+                "Puoi inviarmi in qualsiasi momento una foto (es. di profilo per la postura o per monitorare i tuoi progressi estetici).\n\n"
+                "La analizzerò in modo confidenziale insieme ai tuoi dati fisici per darti feedback costruttivi ed esercizi mirati!"
+            ),
             parse_mode='Markdown'
         )
         return
@@ -105,7 +113,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_prompt = data_map.get(data, "Parlami del benessere quotidiano.")
     
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     try:
         profile = context.user_data.get('profile', 'Profilo non ancora impostato.')
@@ -126,13 +134,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Errore IA da pulsante: {e}")
         bot_reply = "Scusa, ho avuto un piccolo momento di stanchezza. Riprova tra poco!"
 
-    await query.message.reply_text(bot_reply)
+    await context.bot.send_message(chat_id=chat_id, text=bot_reply)
 
 # Gestione dei messaggi di testo (inclusa la ricezione dei dati del profilo)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
+    chat_id = update.effective_chat.id
 
-    # Controlla se l'utente sta inserendo i dati del profilo
     if context.user_data.get('waiting_for_profile'):
         context.user_data['profile'] = user_message
         context.user_data['waiting_for_profile'] = False
@@ -143,7 +151,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     try:
         profile = context.user_data.get('profile', 'Profilo non specificato.')
@@ -166,10 +174,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Gestione delle foto inviate dall'utente (Analisi Posturale / Progressi)
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    chat_id = update.effective_chat.id
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     
     try:
-        # Prende la foto a risoluzione più alta tra quelle disponibili
         photo_file = await update.message.photo[-1].get_file()
         photo_bytes = await photo_file.download_as_bytearray()
 
@@ -184,7 +192,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "concentrandoti su salute, allineamento posturale e benessere."
         )
 
-        # Invio dell'immagine e del prompt al modello multimodale di Gemini
         response = client.models.generate_content(
             model=get_ai_model(),
             contents=[
@@ -211,7 +218,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo)) # Gestisce le foto
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot IA multimodale avviato con successo e in ascolto...")
