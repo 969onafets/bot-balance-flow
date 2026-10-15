@@ -52,9 +52,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Rispondi in modo caldo, conciso, pratico e incoraggiante."
         )
 
-        # Chiamata pulita al modello Gemini
+        # Chiamata al modello Gemini aggiornato e stabile
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-1.5-flash',
             contents=user_message,
             config={
                 'system_instruction': system_instruction,
@@ -81,6 +81,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot IA avviato con successo e in ascolto...")
+    # drop_pending_updates=True evita conflitti ignorando i vecchi messaggi in coda
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
