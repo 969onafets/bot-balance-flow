@@ -52,9 +52,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Rispondi in modo caldo, conciso, pratico e incoraggiante."
         )
 
-        # Chiamata al modello Gemini aggiornato secondo le indicazioni dell'API
+        # Ricerca dinamica del modello flash disponibile per evitare obsolescenze future
+        model_to_use = 'gemini-3.8-flash'  # Fallback predefinito
+        try:
+            models = client.models.list()
+            for m in models:
+                if 'flash' in m.name and 'generateContent' in m.supported_generation_methods:
+                    model_to_use = m.name
+                    break
+        except Exception as model_err:
+            logging.warning(f"Impossibile elencare i modelli, uso il default: {model_err}")
+
+        # Chiamata al modello Gemini dinamico
         response = client.models.generate_content(
-            model='gemini-3.8-flash',
+            model=model_to_use,
             contents=user_message,
             config={
                 'system_instruction': system_instruction,
