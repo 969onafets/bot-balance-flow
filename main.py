@@ -62,20 +62,14 @@ def run_flask():
     app_flask.run(host='0.0.0.0', port=port)
 
 def keep_alive():
-    """Effettua una chiamata di auto-ping ogni 4 minuti per evitare il 'spin down' su Render"""
-    time.sleep(10) # Attende che Flask sia avviato
-    render_url = os.environ.get("RENDER_EXTERNAL_URL")
-    if not render_url:
-        # Fallback se la variabile d'ambiente non è impostata
-        render_url = "https://bot-balance-flow.onrender.com"
-    
+    time.sleep(10)
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://bot-balance-flow.onrender.com")
     while True:
         try:
-            response = requests.get(render_url)
-            logging.info(f"Keep-Alive ping eseguito con successo: {response.status_code}")
+            requests.get(render_url)
         except Exception as e:
-            logging.warning(f"Errore durante il ping Keep-Alive: {e}")
-        time.sleep(240) # 240 secondi = 4 minuti
+            logging.warning(f"Errore Keep-Alive: {e}")
+        time.sleep(240)
 # -------------------------------------------------------------
 
 # Inizializzazione del client Google GenAI
@@ -195,7 +189,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_prompt = data_map.get(data, "Parlami del benessere quotidiano.")
     
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    # 1. Invia il messaggio di attesa con la clessidra
+    wait_message = await context.bot.send_message(
+        chat_id=chat_id,
+        text="⏳ *Sto elaborando il tuo percorso su misura... Un attimo di pazienza.*",
+        parse_mode='Markdown'
+    )
 
     try:
         profile = get_user_profile(chat_id)
@@ -214,7 +213,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Errore IA da pulsante: {e}")
         bot_reply = "I server di Google sono momentaneamente sovraccarichi. Riprova tra qualche istante!"
 
-    await context.bot.send_message(chat_id=chat_id, text=bot_reply)
+    # 2. Aggiorna il messaggio della clessidra con la risposta finale
+    await context.bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=wait_message.message_id,
+        text=bot_reply
+    )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
@@ -230,7 +234,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    # Invia messaggio con clessidra
+    wait_message = await update.message.reply_text(
+        "⏳ *Sto riflettendo sulla tua richiesta... Un istante.*",
+        parse_mode='Markdown'
+    )
 
     try:
         profile = get_user_profile(chat_id)
@@ -247,11 +255,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Errore generazione testo: {e}")
         bot_reply = "I server di Google sono momentaneamente sovraccarichi. Riprova tra qualche istante!"
 
-    await update.message.reply_text(bot_reply)
+    # Aggiorna con la risposta
+    await context.bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=wait_message.message_id,
+        text=bot_reply
+    )
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    
+    # Invia messaggio di attesa per la foto
+    wait_message = await update.message.reply_text(
+        "⏳ *Sto analizzando l'immagine con attenzione... Attendere prego.*",
+        parse_mode='Markdown'
+    )
     
     try:
         photo_file = await update.message.photo[-1].get_file()
@@ -277,15 +295,18 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Errore nell'analisi della foto: {e}")
         bot_reply = "Non sono riuscito ad analizzare la foto a causa di un sovraccarico temporaneo dei server. Riprova tra poco!"
 
-    await update.message.reply_text(bot_reply)
+    # Aggiorna il messaggio con il risultato dell'analisi fotografica
+    await context.bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=wait_message.message_id,
+        text=bot_reply
+    )
 
 def main():
-    # Avvia Flask in un thread
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Avvia il sistema anti-standby (Keep-Alive) in un thread separato
     keep_alive_thread = Thread(target=keep_alive)
     keep_alive_thread.daemon = True
     keep_alive_thread.start()
@@ -298,7 +319,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Bot IA multimodale, con database e sistema anti-standby avviato con successo!")
+    print("Bot con effetto clessidra e anti-standby avviato con successo!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
