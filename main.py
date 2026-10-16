@@ -2,6 +2,7 @@ import os
 import time
 import sqlite3
 import logging
+import requests
 from flask import Flask
 from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -49,37 +50,50 @@ def get_user_profile(user_id):
 init_db()
 # ----------------------------------------
 
-# --- MINI SERVER FLASK PER LA PORTA DI RENDER ---
+# --- MINI SERVER FLASK E SISTEMA ANTI-STANDBY (KEEP-ALIVE) ---
 app_flask = Flask(__name__)
 
 @app_flask.route('/')
 def home():
-    return "Balance & Flow AI Bot è attivo e online con Database! 🚀"
+    return "Balance & Flow AI Bot è attivo, online e protetto dallo standby! 🚀"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app_flask.run(host='0.0.0.0', port=port)
-# ------------------------------------------------
+
+def keep_alive():
+    """Effettua una chiamata di auto-ping ogni 4 minuti per evitare il 'spin down' su Render"""
+    time.sleep(10) # Attende che Flask sia avviato
+    render_url = os.environ.get("RENDER_EXTERNAL_URL")
+    if not render_url:
+        # Fallback se la variabile d'ambiente non è impostata
+        render_url = "https://bot-balance-flow.onrender.com"
+    
+    while True:
+        try:
+            response = requests.get(render_url)
+            logging.info(f"Keep-Alive ping eseguito con successo: {response.status_code}")
+        except Exception as e:
+            logging.warning(f"Errore durante il ping Keep-Alive: {e}")
+        time.sleep(240) # 240 secondi = 4 minuti
+# -------------------------------------------------------------
 
 # Inizializzazione del client Google GenAI
 gemini_api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=gemini_api_key)
 
-# Selezione sicura del modello Flash
 def get_ai_model():
     model_to_use = 'gemini-3.8-flash'
     try:
         models = client.models.list()
         for m in models:
             if m.name and 'flash' in m.name:
-                # Pulisce il nome rimuovendo il prefisso models/ se presente
                 model_to_use = m.name.replace('models/', '')
                 break
     except Exception as e:
         logging.warning(f"Impossibile elencare i modelli, utilizzo il default ({model_to_use}): {e}")
     return model_to_use
 
-# Generazione con retry ottimizzato per gestire i 503 di Google
 def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, max_retries=3):
     model = get_ai_model()
     for attempt in range(max_retries):
@@ -108,8 +122,8 @@ def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, ma
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "👋 **Benvenuta in Balance & Flow AI!**\n\n"
-        "Sono la tua assistente personale per il benessere, la postura e la produttività.\n\n"
-        "Scegli un'opzione o inviami una foto per un check personalizzato:"
+        "Sono la tua assistente personale per il benessere, la postura, la mente e il cuore.\n\n"
+        "Scegli un percorso qui sotto o inviami una foto per un check personalizzato:"
     )
     
     keyboard = [
@@ -119,9 +133,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             InlineKeyboardButton("⚡ Check Energia / Stress", callback_data="path_energia"),
-            InlineKeyboardButton("📊 Imposta Miei Dati", callback_data="set_profile")
+            InlineKeyboardButton("❤️ Questioni di cuore", callback_data="path_cuore")
         ],
         [
+            InlineKeyboardButton("🧠 Psicologia in pillole", callback_data="path_psicologia"),
+            InlineKeyboardButton("☕ 4 chiacchiere", callback_data="path_chiacchiere")
+        ],
+        [
+            InlineKeyboardButton("📊 Imposta Miei Dati", callback_data="set_profile"),
             InlineKeyboardButton("📸 Info Percorso Fotografico", callback_data="info_photo")
         ]
     ]
@@ -168,7 +187,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data_map = {
         "path_micropausa": "Consigliami una micro-pausa rigenerante di 3-5 minuti da fare subito.",
         "path_cena": "Dammi un'idea per una cena espresso, veloce e salutare.",
-        "path_energia": "Fai un check della mia energia e suggeriscimi come gestire lo stress attuale."
+        "path_energia": "Fai un check della mia energia e suggeriscimi come gestire lo stress attuale.",
+        "path_cuore": "Vorrei parlare di questioni di cuore, relazioni o sentimenti in modo empatico e riflessivo.",
+        "path_psicologia": "Dammi una pillola di psicologia pratica o una riflessione utile per la crescita personale.",
+        "path_chiacchiere": "Facciamo due chiacchiere amichevoli e rilassanti su come sta andando la giornata."
     }
     
     user_prompt = data_map.get(data, "Parlami del benessere quotidiano.")
@@ -178,10 +200,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         profile = get_user_profile(chat_id)
         system_instruction = (
-            f"Sei 'Balance & Flow', un'assistente virtuale empatica, professionale e rispettosa "
-            f"specializzata in benessere, postura, chinesiologia leggera e nutrizione veloce. "
+            f"Sei 'Balance & Flow', un'assistente virtuale empatica, calorosa, saggia e rispettosa "
+            f"specializzata in benessere psicofisico, relazioni, psicologia pratica e ascolto attivo. "
             f"Dati dell'utente: {profile}. "
-            "Rispondi in modo caldo, conciso, pratico e incoraggiante."
+            "Rispondi in modo accogliente, profondo ma conciso, pratico e incoraggiante."
         )
 
         bot_reply = generate_content_with_retry(
@@ -213,8 +235,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         profile = get_user_profile(chat_id)
         system_instruction = (
-            f"Sei 'Balance & Flow', un'assistente virtuale empatica e professionale "
-            f"specializzata in benessere, postura e produttività. Dati utente: {profile}."
+            f"Sei 'Balance & Flow', un'assistente virtuale empatica, calorosa e professionale "
+            f"specializzata in benessere, psicologia e supporto emotivo. Dati utente: {profile}."
         )
 
         bot_reply = generate_content_with_retry(
@@ -258,9 +280,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(bot_reply)
 
 def main():
+    # Avvia Flask in un thread
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
+
+    # Avvia il sistema anti-standby (Keep-Alive) in un thread separato
+    keep_alive_thread = Thread(target=keep_alive)
+    keep_alive_thread.daemon = True
+    keep_alive_thread.start()
 
     telegram_token = os.environ.get("TELEGRAM_TOKEN")
     app = Application.builder().token(telegram_token).build()
@@ -270,7 +298,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Bot IA multimodale con database avviato con successo e in ascolto...")
+    print("Bot IA multimodale, con database e sistema anti-standby avviato con successo!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
