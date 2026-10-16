@@ -50,12 +50,12 @@ def get_user_profile(user_id):
 init_db()
 # ----------------------------------------
 
-# --- MINI SERVER FLASK E SISTEMA ANTI-STANDBY (KEEP-ALIVE) ---
+# --- MINI SERVER FLASK E SISTEMA ANTI-STANDBY ---
 app_flask = Flask(__name__)
 
 @app_flask.route('/')
 def home():
-    return "Balance & Flow AI Bot è attivo, online e protetto dallo standby! 🚀"
+    return "Balance & Flow AI Bot è attivo e online con Database! 🚀"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -76,20 +76,10 @@ def keep_alive():
 gemini_api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=gemini_api_key)
 
-def get_ai_model():
-    model_to_use = 'gemini-3.8-flash'
-    try:
-        models = client.models.list()
-        for m in models:
-            if m.name and 'flash' in m.name:
-                model_to_use = m.name.replace('models/', '')
-                break
-    except Exception as e:
-        logging.warning(f"Impossibile elencare i modelli, utilizzo il default ({model_to_use}): {e}")
-    return model_to_use
+# MODELLO FISSO E AGGIORNATO (NO 2.5-FLASH, SOLO 3.8-FLASH)
+MODEL_NAME = 'gemini-3.8-flash'
 
 def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, max_retries=3):
-    model = get_ai_model()
     for attempt in range(max_retries):
         try:
             if photo_bytes:
@@ -101,14 +91,14 @@ def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, ma
                 contents = prompt
 
             response = client.models.generate_content(
-                model=model,
+                model=MODEL_NAME,
                 contents=contents,
                 config={'system_instruction': system_instruction}
             )
             return response.text
         except Exception as e:
             if "503" in str(e) and attempt < max_retries - 1:
-                logging.warning(f"Google GenAI occupato (503). Tentativo {attempt + 1}/{max_retries}, attesa di 3 secondi...")
+                logging.warning(f"Google GenAI occupato (503). Tentativo {attempt + 1}/{max_retries}, attesa 3 secondi...")
                 time.sleep(3)
             else:
                 raise e
@@ -189,7 +179,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_prompt = data_map.get(data, "Parlami del benessere quotidiano.")
     
-    # 1. Invia il messaggio di attesa con la clessidra
     wait_message = await context.bot.send_message(
         chat_id=chat_id,
         text="⏳ *Sto elaborando il tuo percorso su misura... Un attimo di pazienza.*",
@@ -211,9 +200,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Errore IA da pulsante: {e}")
-        bot_reply = "I server di Google sono momentaneamente sovraccarichi. Riprova tra qualche istante!"
+        bot_reply = f"Si è verificato un problema di connessione con l'IA. Riprova tra un istante!"
 
-    # 2. Aggiorna il messaggio della clessidra con la risposta finale
     await context.bot.edit_message_text(
         chat_id=chat_id,
         message_id=wait_message.message_id,
@@ -234,7 +222,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Invia messaggio con clessidra
     wait_message = await update.message.reply_text(
         "⏳ *Sto riflettendo sulla tua richiesta... Un istante.*",
         parse_mode='Markdown'
@@ -253,9 +240,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Errore generazione testo: {e}")
-        bot_reply = "I server di Google sono momentaneamente sovraccarichi. Riprova tra qualche istante!"
+        bot_reply = "Si è verificato un problema temporaneo. Riprova tra poco!"
 
-    # Aggiorna con la risposta
     await context.bot.edit_message_text(
         chat_id=chat_id,
         message_id=wait_message.message_id,
@@ -265,7 +251,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     
-    # Invia messaggio di attesa per la foto
     wait_message = await update.message.reply_text(
         "⏳ *Sto analizzando l'immagine con attenzione... Attendere prego.*",
         parse_mode='Markdown'
@@ -293,9 +278,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Errore nell'analisi della foto: {e}")
-        bot_reply = "Non sono riuscito ad analizzare la foto a causa di un sovraccarico temporaneo dei server. Riprova tra poco!"
+        bot_reply = "Non sono riuscito ad analizzare la foto in questo momento. Riprova tra poco!"
 
-    # Aggiorna il messaggio con il risultato dell'analisi fotografica
     await context.bot.edit_message_text(
         chat_id=chat_id,
         message_id=wait_message.message_id,
@@ -319,7 +303,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Bot con effetto clessidra e anti-standby avviato con successo!")
+    print("Bot avviato con gemini-3.8-flash forzato!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
