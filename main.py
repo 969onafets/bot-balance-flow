@@ -46,7 +46,6 @@ def get_user_profile(user_id):
     conn.close()
     return row[0] if row else 'Profilo non ancora impostato.'
 
-# Avvia la creazione della tabella all'avvio
 init_db()
 # ----------------------------------------
 
@@ -66,18 +65,21 @@ def run_flask():
 gemini_api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=gemini_api_key)
 
+# Selezione sicura del modello Flash
 def get_ai_model():
     model_to_use = 'gemini-3.8-flash'
     try:
         models = client.models.list()
         for m in models:
-            if 'flash' in m.name and 'generateContent' in m.supported_generation_methods:
-                model_to_use = m.name
+            if m.name and 'flash' in m.name:
+                # Pulisce il nome rimuovendo il prefisso models/ se presente
+                model_to_use = m.name.replace('models/', '')
                 break
     except Exception as e:
         logging.warning(f"Impossibile elencare i modelli, utilizzo il default ({model_to_use}): {e}")
     return model_to_use
 
+# Generazione con retry ottimizzato per gestire i 503 di Google
 def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, max_retries=3):
     model = get_ai_model()
     for attempt in range(max_retries):
@@ -98,8 +100,8 @@ def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, ma
             return response.text
         except Exception as e:
             if "503" in str(e) and attempt < max_retries - 1:
-                logging.warning(f"Google GenAI occupato (503). Tentativo {attempt + 1}/{max_retries}, attesa di 2 secondi...")
-                time.sleep(2)
+                logging.warning(f"Google GenAI occupato (503). Tentativo {attempt + 1}/{max_retries}, attesa di 3 secondi...")
+                time.sleep(3)
             else:
                 raise e
 
@@ -188,7 +190,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Errore IA da pulsante: {e}")
-        bot_reply = "Scusa, ho avuto un piccolo momento di stanchezza. Riprova tra poco!"
+        bot_reply = "I server di Google sono momentaneamente sovraccarichi. Riprova tra qualche istante!"
 
     await context.bot.send_message(chat_id=chat_id, text=bot_reply)
 
@@ -221,7 +223,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Errore generazione testo: {e}")
-        bot_reply = "Scusa, ho avuto un piccolo momento di stanchezza. Riprova tra poco!"
+        bot_reply = "I server di Google sono momentaneamente sovraccarichi. Riprova tra qualche istante!"
 
     await update.message.reply_text(bot_reply)
 
@@ -251,7 +253,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Errore nell'analisi della foto: {e}")
-        bot_reply = "Non sono riuscito ad analizzare la foto in questo momento. Assicurati che sia in formato chiaro e riprova tra poco!"
+        bot_reply = "Non sono riuscito ad analizzare la foto a causa di un sovraccarico temporaneo dei server. Riprova tra poco!"
 
     await update.message.reply_text(bot_reply)
 
