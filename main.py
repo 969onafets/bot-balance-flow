@@ -217,7 +217,8 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for u_id, username, first_name, last_seen in users:
             uname_str = f"@{username}" if username != "N/A" else "Nessun username"
             safe_name = first_name.replace("_", " ").replace("*", " ")
-            msg += f"- {safe_name} ({uname_str}) [ID: {u_id}]\n  Ultima attività: {last_seen}\n"
+            profile = get_user_profile(u_id)
+            msg += f"- {safe_name} ({uname_str}) [ID: {u_id}]\n  Ultima attività: {last_seen}\n  Profilo: {profile}\n"
     else:
         msg += "Nessun utente ha ancora interagito con il bot."
         
@@ -271,7 +272,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📸 **Percorso Fotografico & Miglioramenti Estetici**\n\n"
                 "Puoi inviarmi in qualsiasi momento una foto per monitorare i tuoi progressi estetici, "
                 "ricevere suggerimenti mirati sul **dimagrimento localizzato** e sulla gestione degli **inestetismi**.\n\n"
-                "La analizzerò in modo confidenziale insieme ai tuoi dati fisici salvati per darti feedback costruttivi e motivanti!"
+                "Dall'analisi delle immagini valuterò il percorso adatto ai tuoi obiettivi!"
             ),
             parse_mode='Markdown'
         )
@@ -349,7 +350,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         logging.info(f"[ASSISTENZA RICEVUTA] Da {user.first_name} ({username_str}, ID: {user.id}): {user_message}")
         
-        # Inoltro del messaggio all'Admin via Telegram se impostato ADMIN_CHAT_ID
         if ADMIN_CHAT_ID:
             try:
                 admin_msg = (
