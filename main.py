@@ -1,3 +1,6 @@
+Ecco il file main.py completo, corretto e aggiornato con tutte le ultime funzionalità e la gestione sicura del parsing per le notifiche all'amministratore (così non ci saranno mai più errori nell'inoltro delle notifiche di assistenza):
+
+Python
 import os
 import time
 import sqlite3
@@ -352,14 +355,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if ADMIN_CHAT_ID:
             try:
+                # Puliamo i caratteri speciali dal nome utente per evitare errori di parsing Markdown
+                safe_name = user.first_name.replace("_", " ").replace("*", " ")
                 admin_msg = (
-                    f"📩 **NUOVA RICHIESTA ASSISTENZA / IDEE**\n\n"
-                    f"👤 **Da:** {user.first_name} ({username_str})\n"
-                    f"🆔 **ID Utente:** `{user.id}`\n\n"
-                    f"💬 **Messaggio:**\n{user_message}\n\n"
-                    f"👉 _Per rispondere scrivi:_\n`/rispondi {user.id} Il tuo testo qui`"
+                    f"📩 NUOVA RICHIESTA ASSISTENZA / IDEE\n\n"
+                    f"👤 Da: {safe_name} ({username_str})\n"
+                    f"🆔 ID Utente: {user.id}\n\n"
+                    f"💬 Messaggio:\n{user_message}\n\n"
+                    f"👉 Per rispondere scrivi:\n/rispondi {user.id} Il tuo testo qui"
                 )
-                await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_msg, parse_mode='Markdown')
+                await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_msg)
             except Exception as e:
                 logging.error(f"Errore invio notifica admin: {e}")
 
