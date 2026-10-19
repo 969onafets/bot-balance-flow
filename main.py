@@ -21,14 +21,12 @@ logging.basicConfig(
 def init_db():
     conn = sqlite3.connect('users.db')
     cursor = conn.cursor()
-    # Tabella profili
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS profiles (
             user_id INTEGER PRIMARY KEY,
             profile_data TEXT
         )
     ''')
-    # Tabella tracciamento utenti (visite e attività)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS user_activity (
             user_id INTEGER PRIMARY KEY,
@@ -41,7 +39,6 @@ def init_db():
     conn.close()
 
 def log_user_activity(user):
-    """Registra o aggiorna l'utente che ha interagito con il bot"""
     if not user:
         return
     conn = sqlite3.connect('users.db')
@@ -59,7 +56,6 @@ def log_user_activity(user):
     conn.close()
 
 def get_all_users_stats():
-    """Recupera la lista e il conteggio di tutti gli utenti registrati"""
     conn = sqlite3.connect('users.db')
     cursor = conn.cursor()
     cursor.execute('SELECT user_id, username, first_name, last_seen FROM user_activity ORDER BY last_seen DESC')
@@ -116,6 +112,14 @@ client = genai.Client(api_key=gemini_api_key)
 
 MODEL_NAME = 'gemini-3.8-flash'
 
+# FIRMA CONDIVISIBILE IN CALCE
+SHARE_FOOTER = (
+    "\n\n— — — — — — — — — — — — —\n"
+    "✨ *Ti è piaciuto questo spunto?*\n"
+    "💬 Provato con **Balance & Flow AI**!\n"
+    "👉 Clicca qui per provarlo subito: t.me/BalanceFlowBot2026"
+)
+
 def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, max_retries=3):
     for attempt in range(max_retries):
         try:
@@ -141,18 +145,20 @@ def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, ma
                 raise e
 
 async def update_wait_message(context, chat_id, message_id, text):
+    # Aggiungiamo la firma condivisibile prima dell'invio
+    full_text = text + SHARE_FOOTER
     try:
         await context.bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
-            text=text,
+            text=full_text,
             parse_mode='Markdown'
         )
     except Exception:
         await context.bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
-            text=text
+            text=full_text
         )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -163,6 +169,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Sono la tua assistente personale per il benessere, la postura, la mente e il cuore.\n\n"
         "Scegli un percorso qui sotto o inviami una foto per un check personalizzato:"
     )
+    
+    share_text = "Invita un'amica a provare Balance & Flow AI per un check della postura e del benessere!"
     
     keyboard = [
         [
@@ -180,6 +188,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton("📊 Imposta Miei Dati", callback_data="set_profile"),
             InlineKeyboardButton("📸 Info Percorso Fotografico", callback_data="info_photo")
+        ],
+        [
+            InlineKeyboardButton("💌 Condividi con un'amica", switch_inline_query=share_text)
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -189,7 +200,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.callback_query:
         await update.callback_query.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
 
-# COMANDO PER VEDERE LA LISTA UTENTI (/stats)
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_user_activity(update.effective_user)
     users = get_all_users_stats()
@@ -371,7 +381,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Bot Balance & Flow avviato con successo e tracciamento utenti attivo!")
+    print("Bot Balance & Flow avviato con successo, tracciamento utenti e condivisione social attivi!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
