@@ -166,10 +166,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "👋 **Benvenuta in Balance & Flow AI!**\n\n"
         "Sono la tua assistente personale per il benessere, la postura, la mente e il cuore.\n\n"
-        "Scegli un percorso qui sotto:"
+        "Scegli un percorso qui sotto o inviami una foto per monitorare i tuoi progressi estetici:"
     )
     
-    share_text = "Invita un'amica a provare Balance & Flow AI per un check della postura e del benessere!"
+    share_text = "Invita un'amica a provare Balance & Flow AI per un check del benessere e dei progressi estetici!"
     
     keyboard = [
         [
@@ -186,7 +186,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             InlineKeyboardButton("📊 Imposta Miei Dati", callback_data="set_profile"),
-            InlineKeyboardButton("📸 Info Percorso Fotografico", callback_data="info_photo")
+            InlineKeyboardButton("📸 Percorso Estetico & Foto", callback_data="info_photo")
+        ],
+        [
+            InlineKeyboardButton("💬 Contatta Assistenza / Idee", callback_data="contact_support")
         ],
         [
             InlineKeyboardButton("💌 Condividi con un'amica", switch_inline_query=share_text)
@@ -244,9 +247,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=chat_id,
             text=(
-                "📸 **Percorso Fotografico & Postura**\n\n"
-                "Puoi inviarmi in qualsiasi momento una foto (es. di profilo per la postura o per monitorare i tuoi progressi estetici).\n\n"
-                "La analizzerò insieme ai tuoi dati fisici per darti feedback mirati!"
+                "📸 **Percorso Fotografico & Miglioramenti Estetici**\n\n"
+                "Puoi inviarmi in qualsiasi momento una foto per monitorare i tuoi progressi estetici, "
+                "ricevere suggerimenti mirati sul **dimagrimento localizzato** e sulla gestione degli **inestetismi**.\n\n"
+                "La analizzerò in modo confidenziale insieme ai tuoi dati fisici salvati per darti feedback costruttivi e motivanti!"
+            ),
+            parse_mode='Markdown'
+        )
+        return
+
+    if data == "contact_support":
+        context.user_data['waiting_for_support'] = True
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "💬 **Assistenza, Idee e Suggerimenti**\n\n"
+                "Hai idee per migliorare il bot, suggerimenti o altre esigenze particolari?\n"
+                "Scrivi qui sotto il tuo messaggio in un unico invio: lo leggerò personalmente per offrirti il miglior supporto possibile!"
             ),
             parse_mode='Markdown'
         )
@@ -304,6 +321,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if context.user_data.get('waiting_for_support'):
+        context.user_data['waiting_for_support'] = False
+        user = update.effective_user
+        username_str = f"@{user.username}" if user.username else "Senza username"
+        
+        # Logghiamo la richiesta di supporto nei log di Render per permetterti di leggerla
+        logging.info(f"[ASSISTENZA RICEVUTA] Da {user.first_name} ({username_str}, ID: {user.id}): {user_message}")
+        
+        await update.message.reply_text(
+            "✅ **Messaggio inviato con successo all'assistenza!**\n\n"
+            "Grazie mille per i tuoi suggerimenti o la tua segnalazione. Li ho registrati e verranno presi in grande considerazione!",
+            parse_mode='Markdown'
+        )
+        return
+
     wait_message = await update.message.reply_text(
         "⏳ *Sto riflettendo sulla tua richiesta... Un istante.*",
         parse_mode='Markdown'
@@ -332,7 +364,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     
     wait_message = await update.message.reply_text(
-        "⏳ *Sto analizzando l'immagine con attenzione... Attendere prego.*",
+        "⏳ *Sto analizzando l'immagine con attenzione per i progressi estetici... Attendere prego.*",
         parse_mode='Markdown'
     )
     
@@ -341,14 +373,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo_bytes = await photo_file.download_as_bytearray()
 
         profile = get_user_profile(chat_id)
-        caption = update.message.caption or "Analizza questa foto dal punto di vista della postura, della tonicità e del benessere generale, offrendo suggerimenti gentili e professionali."
+        caption = update.message.caption or "Analizza questa foto focalizzandoti sui miglioramenti estetici, sul dimagrimento localizzato e sulla gestione degli inestetismi, offrendo suggerimenti gentili, pratici e motivanti."
 
         system_instruction = (
-            f"Sei 'Balance & Flow', un'esperta di benessere, postura e forma fisica. "
-            f"L'utente ha condiviso una foto per monitorare i suoi progressi o valutare la postura. "
+            f"Sei 'Balance & Flow', un'esperta di benessere, miglioramento estetico e forma fisica. "
+            f"L'utente ha condiviso una foto per valutare i progressi estetici, il dimagrimento localizzato e gli inestetismi. "
             f"Dati utente: {profile}. "
             "Fornisci un'analisi rispettosa, costruttiva, motivante ed evita giudizi estetici severi, "
-            "concentrandoti su salute, allineamento posturale e benessere. "
+            "concentrandoti su consigli pratici e benessere generale. "
             "NON usare titoli con cancelletti (# o ###). Usa solo il grassetto (**testo**) e elenchi puntati."
         )
 
@@ -381,7 +413,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Bot Balance & Flow avviato con successo e comando stats corretto!")
+    print("Bot Balance & Flow avviato con successo, percorso estetico e assistenza attivi!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
