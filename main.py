@@ -166,7 +166,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "👋 **Benvenuta in Balance & Flow AI!**\n\n"
         "Sono la tua assistente personale per il benessere, la postura, la mente e il cuore.\n\n"
-        "Scegli un percorso qui sotto o inviami una foto per un check personalizzato:"
+        "Scegli un percorso qui sotto:"
     )
     
     share_text = "Invita un'amica a provare Balance & Flow AI per un check della postura e del benessere!"
@@ -246,7 +246,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=(
                 "📸 **Percorso Fotografico & Postura**\n\n"
                 "Puoi inviarmi in qualsiasi momento una foto (es. di profilo per la postura o per monitorare i tuoi progressi estetici).\n\n"
-                "La analizzerò in modo confidenziale insieme ai tuoi dati fisici salvati nel database per darti feedback mirati!"
+                "La analizzerò insieme ai tuoi dati fisici per darti feedback mirati!"
             ),
             parse_mode='Markdown'
         )
