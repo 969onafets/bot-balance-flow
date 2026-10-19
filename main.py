@@ -1,6 +1,3 @@
-Ecco il file main.py completo, corretto e aggiornato con tutte le ultime funzionalità e la gestione sicura del parsing per le notifiche all'amministratore (così non ci saranno mai più errori nell'inoltro delle notifiche di assistenza):
-
-Python
 import os
 import time
 import sqlite3
