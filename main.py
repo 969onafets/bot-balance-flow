@@ -1,6 +1,3 @@
-Ecco il file main.py completo, corretto e definitivo, con la gestione sicura del comando /stats (senza errori di formattazione Markdown) e tutte le funzionalità avanzate:
-
-Python
 import os
 import time
 import sqlite3
@@ -219,7 +216,6 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         msg += "Nessun utente ha ancora interagito con il bot."
         
-    # Invio come testo semplice sicuro per evitare errori di parsing Markdown
     await update.message.reply_text(msg)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
