@@ -3,6 +3,7 @@ import time
 import sqlite3
 import logging
 import requests
+from datetime import datetime
 from flask import Flask
 from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -20,14 +21,51 @@ logging.basicConfig(
 def init_db():
     conn = sqlite3.connect('users.db')
     cursor = conn.cursor()
+    # Tabella profili
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS profiles (
             user_id INTEGER PRIMARY KEY,
             profile_data TEXT
         )
     ''')
+    # Tabella tracciamento utenti (visite e attività)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_activity (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            first_name TEXT,
+            last_seen TEXT
+        )
+    ''')
     conn.commit()
     conn.close()
+
+def log_user_activity(user):
+    """Registra o aggiorna l'utente che ha interagito con il bot"""
+    if not user:
+        return
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute('''
+        INSERT INTO user_activity (user_id, username, first_name, last_seen)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            username = excluded.username,
+            first_name = excluded.first_name,
+            last_seen = excluded.last_seen
+    ''', (user.id, user.username or "N/A", user.first_name or "Anonimo", now_str))
+    conn.commit()
+    conn.close()
+
+def get_all_users_stats():
+    """Recupera la lista e il conteggio di tutti gli utenti registrati"""
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT user_id, username, first_name, last_seen FROM user_activity ORDER BY last_seen DESC')
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
 def save_user_profile(user_id, profile_text):
     conn = sqlite3.connect('users.db')
@@ -76,7 +114,6 @@ def keep_alive():
 gemini_api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=gemini_api_key)
 
-# MODELLO FISSO E AGGIORNATO (NO 2.5-FLASH, SOLO 3.8-FLASH)
 MODEL_NAME = 'gemini-3.8-flash'
 
 def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, max_retries=3):
@@ -103,7 +140,24 @@ def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, ma
             else:
                 raise e
 
+async def update_wait_message(context, chat_id, message_id, text):
+    try:
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=text,
+            parse_mode='Markdown'
+        )
+    except Exception:
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=text
+        )
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    log_user_activity(update.effective_user)
+    
     welcome_text = (
         "👋 **Benvenuta in Balance & Flow AI!**\n\n"
         "Sono la tua assistente personale per il benessere, la postura, la mente e il cuore.\n\n"
@@ -135,9 +189,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.callback_query:
         await update.callback_query.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
 
+# COMANDO PER VEDERE LA LISTA UTENTI (/stats)
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    log_user_activity(update.effective_user)
+    users = get_all_users_stats()
+    
+    total = len(users)
+    msg = f"📊 **Statistiche Utenti Balance & Flow**\n"
+    msg += f"👥 **Utenti Totali Registrati:** {total}\n\n"
+    
+    if total > 0:
+        msg += "📋 **Elenco Utenti:**\n"
+        for u_id, username, first_name, last_seen in users:
+            uname_str = f"@{username}" if username != "N/A" else "Nessun username"
+            msg += f"• **{first_name}** ({uname_str}) - ID: `{u_id}`\n  _Ultima attività: {last_seen}_\n"
+    else:
+        msg += "Nessun utente ha ancora interagito con il bot."
+        
+    await update.message.reply_text(msg, parse_mode='Markdown')
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    log_user_activity(query.from_user)
     
     data = query.data
     chat_id = update.effective_chat.id if update.effective_chat else query.message.chat.id
@@ -191,7 +265,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Sei 'Balance & Flow', un'assistente virtuale empatica, calorosa, saggia e rispettosa "
             f"specializzata in benessere psicofisico, relazioni, psicologia pratica e ascolto attivo. "
             f"Dati dell'utente: {profile}. "
-            "Rispondi in modo accogliente, profondo ma conciso, pratico e incoraggiante."
+            "Rispondi in modo accogliente, profondo ma conciso, pratico e incoraggiante. "
+            "NON usare titoli con cancelletti (# o ###). Usa solo il grassetto (**testo**) e elenchi puntati (* o -) compatibili con Telegram."
         )
 
         bot_reply = generate_content_with_retry(
@@ -200,15 +275,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Errore IA da pulsante: {e}")
-        bot_reply = f"Si è verificato un problema di connessione con l'IA. Riprova tra un istante!"
+        bot_reply = "I server di Google sono momentaneamente sotto carico. Riprova tra qualche istante!"
 
-    await context.bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=wait_message.message_id,
-        text=bot_reply
-    )
+    await update_wait_message(context, chat_id, wait_message.message_id, bot_reply)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    log_user_activity(update.effective_user)
     user_message = update.message.text
     chat_id = update.effective_chat.id
 
@@ -231,7 +303,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         profile = get_user_profile(chat_id)
         system_instruction = (
             f"Sei 'Balance & Flow', un'assistente virtuale empatica, calorosa e professionale "
-            f"specializzata in benessere, psicologia e supporto emotivo. Dati utente: {profile}."
+            f"specializzata in benessere, psicologia e supporto emotivo. Dati utente: {profile}. "
+            "NON usare titoli con cancelletti (# o ###). Usa solo il grassetto (**testo**) e elenchi puntati."
         )
 
         bot_reply = generate_content_with_retry(
@@ -240,15 +313,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Errore generazione testo: {e}")
-        bot_reply = "Si è verificato un problema temporaneo. Riprova tra poco!"
+        bot_reply = "I server di Google sono momentaneamente sotto carico. Riprova tra qualche istante!"
 
-    await context.bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=wait_message.message_id,
-        text=bot_reply
-    )
+    await update_wait_message(context, chat_id, wait_message.message_id, bot_reply)
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    log_user_activity(update.effective_user)
     chat_id = update.effective_chat.id
     
     wait_message = await update.message.reply_text(
@@ -268,7 +338,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"L'utente ha condiviso una foto per monitorare i suoi progressi o valutare la postura. "
             f"Dati utente: {profile}. "
             "Fornisci un'analisi rispettosa, costruttiva, motivante ed evita giudizi estetici severi, "
-            "concentrandoti su salute, allineamento posturale e benessere."
+            "concentrandoti su salute, allineamento posturale e benessere. "
+            "NON usare titoli con cancelletti (# o ###). Usa solo il grassetto (**testo**) e elenchi puntati."
         )
 
         bot_reply = generate_content_with_retry(
@@ -278,13 +349,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logging.error(f"Errore nell'analisi della foto: {e}")
-        bot_reply = "Non sono riuscito ad analizzare la foto in questo momento. Riprova tra poco!"
+        bot_reply = "Non sono riuscito ad analizzare la foto a causa di un sovraccarico temporaneo dei server. Riprova tra poco!"
 
-    await context.bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=wait_message.message_id,
-        text=bot_reply
-    )
+    await update_wait_message(context, chat_id, wait_message.message_id, bot_reply)
 
 def main():
     flask_thread = Thread(target=run_flask)
@@ -299,11 +366,12 @@ def main():
     app = Application.builder().token(telegram_token).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Bot avviato con gemini-3.8-flash forzato!")
+    print("Bot Balance & Flow avviato con successo e tracciamento utenti attivo!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
