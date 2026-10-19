@@ -17,6 +17,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID")
+
 # --- INIZIALIZZAZIONE DATABASE SQLITE ---
 def init_db():
     conn = sqlite3.connect('users.db')
@@ -221,6 +223,25 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     await update.message.reply_text(msg)
 
+# COMANDO PER RISPONDERE AGLI UTENTI: /rispondi ID_UTENTE Messaggio
+async def reply_to_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        await update.message.reply_text("⚠️ Uso corretto: `/rispondi ID_UTENTE messaggio`", parse_mode='Markdown')
+        return
+    
+    target_user_id = context.args[0]
+    reply_text = " ".join(context.args[1:])
+    
+    try:
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text=f"💬 **Risposta dall'Assistenza Balance & Flow:**\n\n{reply_text}",
+            parse_mode='Markdown'
+        )
+        await update.message.reply_text(f"✅ Risposta inviata con successo all'utente `{target_user_id}`!", parse_mode='Markdown')
+    except Exception as e:
+        await update.message.reply_text(f"❌ Errore nell'invio del messaggio: {e}")
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -326,9 +347,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
         username_str = f"@{user.username}" if user.username else "Senza username"
         
-        # Logghiamo la richiesta di supporto nei log di Render per permetterti di leggerla
         logging.info(f"[ASSISTENZA RICEVUTA] Da {user.first_name} ({username_str}, ID: {user.id}): {user_message}")
         
+        # Inoltro del messaggio all'Admin via Telegram se impostato ADMIN_CHAT_ID
+        if ADMIN_CHAT_ID:
+            try:
+                admin_msg = (
+                    f"📩 **NUOVA RICHIESTA ASSISTENZA / IDEE**\n\n"
+                    f"👤 **Da:** {user.first_name} ({username_str})\n"
+                    f"🆔 **ID Utente:** `{user.id}`\n\n"
+                    f"💬 **Messaggio:**\n{user_message}\n\n"
+                    f"👉 _Per rispondere scrivi:_\n`/rispondi {user.id} Il tuo testo qui`"
+                )
+                await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_msg, parse_mode='Markdown')
+            except Exception as e:
+                logging.error(f"Errore invio notifica admin: {e}")
+
         await update.message.reply_text(
             "✅ **Messaggio inviato con successo all'assistenza!**\n\n"
             "Grazie mille per i tuoi suggerimenti o la tua segnalazione. Li ho registrati e verranno presi in grande considerazione!",
@@ -409,11 +443,12 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CommandHandler("rispondi", reply_to_user_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Bot Balance & Flow avviato con successo, percorso estetico e assistenza attivi!")
+    print("Bot Balance & Flow avviato con successo!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
