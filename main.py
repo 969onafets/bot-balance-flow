@@ -1,3 +1,6 @@
+Ecco il file main.py completo, corretto e definitivo, con la gestione sicura del comando /stats (senza errori di formattazione Markdown) e tutte le funzionalità avanzate:
+
+Python
 import os
 import time
 import sqlite3
@@ -145,7 +148,6 @@ def generate_content_with_retry(prompt, system_instruction, photo_bytes=None, ma
                 raise e
 
 async def update_wait_message(context, chat_id, message_id, text):
-    # Aggiungiamo la firma condivisibile prima dell'invio
     full_text = text + SHARE_FOOTER
     try:
         await context.bot.edit_message_text(
@@ -205,18 +207,20 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users = get_all_users_stats()
     
     total = len(users)
-    msg = f"📊 **Statistiche Utenti Balance & Flow**\n"
-    msg += f"👥 **Utenti Totali Registrati:** {total}\n\n"
+    msg = f"Statistiche Utenti Balance & Flow\n"
+    msg += f"Utenti Totali Registrati: {total}\n\n"
     
     if total > 0:
-        msg += "📋 **Elenco Utenti:**\n"
+        msg += "Elenco Utenti:\n"
         for u_id, username, first_name, last_seen in users:
             uname_str = f"@{username}" if username != "N/A" else "Nessun username"
-            msg += f"• **{first_name}** ({uname_str}) - ID: `{u_id}`\n  _Ultima attività: {last_seen}_\n"
+            safe_name = first_name.replace("_", " ").replace("*", " ")
+            msg += f"- {safe_name} ({uname_str}) [ID: {u_id}]\n  Ultima attività: {last_seen}\n"
     else:
         msg += "Nessun utente ha ancora interagito con il bot."
         
-    await update.message.reply_text(msg, parse_mode='Markdown')
+    # Invio come testo semplice sicuro per evitare errori di parsing Markdown
+    await update.message.reply_text(msg)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -381,7 +385,7 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Bot Balance & Flow avviato con successo, tracciamento utenti e condivisione social attivi!")
+    print("Bot Balance & Flow avviato con successo e comando stats corretto!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
